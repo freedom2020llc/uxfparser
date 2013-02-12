@@ -145,18 +145,40 @@ public class UxfJavaClass {
             uxf.setPackageName(packageName);
         }
 
-        // Get fields
+        // Read any fields from this class 
+        // Field examples that will be translated in Java field source:
+        // myvar:int:0                  -> protected int myvar = 0;
+        // myvar:int                    -> protected int myvar;
+        // myvar:HashMap:new HashMap() -> protected HashMap myvar = new HashMap();          
+        // MY_FINALVAR:HashMap:new HashMap() -> public static final HashMap MY_FINALVAR = new HashMap();
+        // Field examples that end with ";" will just be translated with no change (nothing clever):
+        // protected static NewClass MY_COMPLEX_VAR = new NewClass(5);  
         if (sections.length > 2) {
             String [] fields = sections[1].split("\n");
+            
+            // Example: myvar:int:0
             for (int x=0; x<fields.length; x++) {
-                String tokens[] = fields[x].split(":");
-                if (tokens.length >= 2) {
-                    String variableName = tokens[0].trim();
-                    String field = "protected " + tokens[1].trim() + " _" + tokens[0].trim() + ";";
-                    if (variableName.equals(variableName.toUpperCase())) {
-                        field = "public static final "+ tokens[1].trim() + " " + tokens[0].trim() + " = " + tokens[2].trim() + ";";
-                    }                    
-                    uxf.addField(field);
+                
+                // Field ends with ";" assume it should just be translated with no change
+                String fieldtext = fields[x].trim(); 
+                if (fieldtext.endsWith(";")) {
+                    uxf.addField(fieldtext);
+                } else {
+                    // Field needs parsing
+                    String tokens[] = fieldtext.split(":");
+                    if (tokens.length >= 2) {
+                        String modifier = "protected";
+                        String variableName = tokens[0].trim();
+                        String dataType = tokens[1].trim();
+                        String initialisation = (tokens.length > 2)?tokens[2].trim():"";
+                        boolean constant = false;
+                        if (variableName.equals(variableName.toUpperCase())) {
+                            modifier = "public static final";
+                            constant = true;
+                        }                    
+                        String field = modifier + " " + dataType + " " + (!constant?"_":"") + variableName + (("".equals(initialisation))?";":" = " + initialisation + ";");
+                        uxf.addField(field);
+                    }
                 }
             }
         }
@@ -174,6 +196,10 @@ public class UxfJavaClass {
                 
                 // Search for key modifiers
                 modifier = "public ";
+                if ( methods[x].trim().contains("{private}") ) {
+                    methods[x] = methods[x].replace("{private}", "");
+                    modifier = "private ";
+                }
                 if ( methods[x].trim().contains("{protected}") ) {
                     methods[x] = methods[x].replace("{protected}", "");
                     modifier = "protected ";
@@ -197,8 +223,15 @@ public class UxfJavaClass {
                     if (methods[x].contains("//JAVADOC")) {
                         System.out.println("METHOD " + methods[x]);
                         String[] line = methods[x].split("//JAVADOC");
+                        
+                        // Fix for javadoc comment issue
+                        //method = "/**\n" + SPACER + " * " + (line.length>1?line[1]:"") + "\n" + SPACER + " */\n";
                         method = "/**\n * " + (line.length>1?line[1]:"") + "\n */\n";
+                        
+                        // Fix for constructor/method sig extra space at end of "{"
+                        //method += SPACER + modifier + line[0].trim();
                         method += SPACER + modifier + line[0];
+                        
                         //method = method.replace("//JAVADOC","");                        
                         insidemethod = true;
                         continue;
