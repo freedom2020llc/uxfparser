@@ -145,7 +145,7 @@ public class UxfJavaClass {
             uxf.setPackageName(packageName);
         }
 
-        // Read any fields from this class 
+        // Read any fields from this class. 
         // Field examples that will be translated in Java field source:
         // myvar:int:0                  -> protected int myvar = 0;
         // myvar:int                    -> protected int myvar;
@@ -156,7 +156,7 @@ public class UxfJavaClass {
         if (sections.length > 2) {
             String [] fields = sections[1].split("\n");
             
-            // Example: myvar:int:0
+            // Loop through all fields
             for (int x=0; x<fields.length; x++) {
                 
                 // Field ends with ";" assume it should just be translated with no change
@@ -189,6 +189,8 @@ public class UxfJavaClass {
             boolean insidemethod = false;
             String method = "METHOD_NOT_FOUND";
             String modifier = "public";
+            String methodname = "METHOD NAME NOT FOUND";
+            String autocomment = "";
             for (int x=0; x<methods.length; x++) {
                 
                 // ignore blank rows
@@ -213,29 +215,45 @@ public class UxfJavaClass {
                     modifier = "public static ";
                 }
                 
+                // Get method name, and set javadoc comment
+                System.out.println("methods[x].indexOf('(')="+methods[x].indexOf('(') + ", insidemethod=" + insidemethod);
+                if (!insidemethod) {
+                    methodname = methods[x].substring(0, methods[x].indexOf('('));
+                    if (methodname.lastIndexOf(' ') > 0 ) {
+                        methodname = methodname.substring(methodname.lastIndexOf(' '));
+                        autocomment = methodname;
+                    } else {
+                        autocomment = "Constructor: " + methodname;
+                    }
+                }
+                System.out.println("methodname="+methodname + ", insidemethod=" + insidemethod);
+                                
                 // method
                 if ( (methods[x].contains("{") && methods[x].contains("}")) &&
                      (methods[x].indexOf("{") < methods[x].indexOf("}"))) {
-                    uxf.addMethod(modifier + methods[x]);
+                    
+                    // one line method
+                    method = "\n" + SPACER +"/**\n" + SPACER + " * " + autocomment + "\n" + SPACER + " */\n";
+                    method += SPACER + modifier + methods[x];
+                    uxf.addMethod(method);
                     insidemethod = false;
+                    
                 } else {
+                    
+                    // debug
                     System.out.println("methods[x]="+methods[x] + ", insidemethod=" + insidemethod);
+                    
+                    // Print Javadoc message only (no parameters yet) with correct indentation
                     if (methods[x].contains("//JAVADOC")) {
                         System.out.println("METHOD " + methods[x]);
                         String[] line = methods[x].split("//JAVADOC");
-                        
-                        // Fix for javadoc comment issue
-                        //method = "/**\n" + SPACER + " * " + (line.length>1?line[1]:"") + "\n" + SPACER + " */\n";
-                        method = "/**\n * " + (line.length>1?line[1]:"") + "\n */\n";
-                        
-                        // Fix for constructor/method sig extra space at end of "{"
-                        //method += SPACER + modifier + line[0].trim();
-                        method += SPACER + modifier + line[0];
-                        
-                        //method = method.replace("//JAVADOC","");                        
+                        method = "\n" + SPACER +"/**\n" + SPACER + " * " + (line.length>1?line[1]:autocomment) + "\n" + SPACER + " */\n";
+                        method += SPACER + modifier + line[0].trim();
                         insidemethod = true;
                         continue;
                     }
+                    
+                    // Print method signature, and loop until //END found
                     if (insidemethod) {
                         method += "\n" + SPACER + methods[x];
                         if (methods[x].contains("//END")) {           
@@ -245,61 +263,12 @@ public class UxfJavaClass {
                             insidemethod = false;
                         }
                     } else {
-                        uxf.addMethod(modifier + methods[x]);
+                        // otherwise just print it
+                        method = "\n" + SPACER +"/**\n" + SPACER + " * " + autocomment + "\n" + SPACER + " */\n";
+                        method += SPACER + modifier + methods[x];
+                        uxf.addMethod(method);
                     }
                 }
-                
-                
-                /*
-                // Constructor
-                if (x == 0) {
-                    uxf.addMethod("public " + methods[x]);
-                } else {
-                    
-                    
-                    String sig = "CANNOT_READ_SIGNATURE";
-                    String ret = "void"; 
-                    String body = "{ }"; 
-
-                    // Standard methods
-                    int index1 = methods[x].indexOf(")");
-                    int index2 = methods[x].indexOf("{");
-                    if (index2 == -1) index2=methods[x].length();
-                    if (index1 > 0) {
-                        int index3 = methods[x].indexOf("(");
-                        sig = methods[x].substring(0, index3+1);
-                        
-                        // figure out java signature
-                        String arglist = methods[x].substring(index3+1, index1);
-                        System.out.println("Arglist = " + arglist);
-                        String[] args = arglist.split(",");
-                        for (int f=0; f<args.length; f++) {
-                            String[] tmp = args[f].split(":");
-                            if (tmp.length>=2) {
-                                sig += (f>0?",":"") + tmp[1] + " " + tmp[0];
-                            }
-                        }
-                        
-                        sig += ")";
-                    }
-                    if (index1 > 0 && index2 > 0) {
-                        System.out.println("RET" + index1 + "," + index2);
-                        ret = methods[x].substring(index1, index2).trim();
-                        ret = ret.replace(":","");
-                        ret = ret.replace(")","");
-                        ret = ret.trim();
-                    }
-                    if (index2 > 0) {
-                        body = methods[x].substring(index2, methods[x].length()).trim();
-                    }
-                    //body = ""; 
-                    String method = "public " + ret + " " + sig + " " + body;
-                    uxf.addMethod(method);
-                    
-                    
-                    uxf.addMethod("public " + methods[x]);
-                }
-                */
             }
         }
         
@@ -431,7 +400,6 @@ public class UxfJavaClass {
      * @see java.lang.Object#toString()
      */
     public String toString() {
-        String PAD = "    ";
         StringBuffer buf = new StringBuffer();
         buf.append("/**\n");
         buf.append(" *\n"); 
@@ -445,14 +413,15 @@ public class UxfJavaClass {
         buf.append(" *\n");
         buf.append(_comments);
         buf.append(" */\n");
-        buf.append("public " + _classDefinition + " {\n");        
-        buf.append("\n");
-        for (String field : _fields) {
-            buf.append(PAD + field + "\n");
+        buf.append("public " + _classDefinition + " {\n");
+        if (!_fields.isEmpty()) {
+            buf.append("\n");
         }
-        buf.append("\n");        
+        for (String field : _fields) {
+            buf.append(SPACER + field + "\n");
+        }      
         for (String method : _methods) {
-            buf.append(PAD + method + "\n");
+            buf.append(method + "\n");
         }
         buf.append("\n");        
         buf.append("}\n");
